@@ -1,7 +1,4 @@
 # PHP_Laravel12_Scramble
-
-# PHP_Laravel12_Scramble
-
 ## Overview
 
 A simple Laravel project demonstrating how to use **Dedoc Scramble** to automatically generate OpenAPI / Swagger‑like API documentation.
