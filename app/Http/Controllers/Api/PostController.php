@@ -18,6 +18,7 @@ class PostController extends Controller
      * Supports:
      * - Search by title/content
      * - Status filter
+     * - Category filter
      * - Sorting
      * - Pagination
      */
@@ -31,6 +32,12 @@ class PostController extends Controller
                 Rule::in(['active', 'inactive']),
             ],
 
+            'category_id' => [
+                'nullable',
+                'integer',
+                'exists:categories,id',
+            ],
+
             'sort' => [
                 'nullable',
                 Rule::in(['latest', 'oldest', 'title']),
@@ -39,7 +46,8 @@ class PostController extends Controller
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 
-        $query = Post::query();
+        $query = Post::query()
+            ->with('category');
 
         /*
         |--------------------------------------------------------------------------
@@ -48,12 +56,15 @@ class PostController extends Controller
         */
 
         if ($request->filled('search')) {
-
             $search = $request->search;
 
             $query->where(function ($q) use ($search) {
                 $q->where('title', 'like', "%{$search}%")
-                    ->orWhere('content', 'like', "%{$search}%");
+                    ->orWhere(
+                        'content',
+                        'like',
+                        "%{$search}%"
+                    );
             });
         }
 
@@ -64,8 +75,20 @@ class PostController extends Controller
         */
 
         if ($request->filled('status')) {
-
             $query->where('status', $request->status);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Category Filter
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->filled('category_id')) {
+            $query->where(
+                'category_id',
+                $request->category_id
+            );
         }
 
         /*
@@ -75,7 +98,6 @@ class PostController extends Controller
         */
 
         switch ($request->get('sort', 'oldest')) {
-
             case 'oldest':
                 $query->oldest();
                 break;
@@ -108,7 +130,11 @@ class PostController extends Controller
      */
     public function store(StorePostRequest $request)
     {
-        $post = Post::create($request->validated());
+        $post = Post::create(
+            $request->validated()
+        );
+
+        $post->load('category');
 
         return new PostResource($post);
     }
@@ -118,6 +144,8 @@ class PostController extends Controller
      */
     public function show(Post $post)
     {
+        $post->load('category');
+
         return new PostResource($post);
     }
 
@@ -135,11 +163,20 @@ class PostController extends Controller
                 'sometimes',
                 Rule::in(['active', 'inactive']),
             ],
+
+            'category_id' => [
+                'sometimes',
+                'nullable',
+                'integer',
+                'exists:categories,id',
+            ],
         ]);
 
         $post->update($validated);
 
-        return new PostResource($post->fresh());
+        return new PostResource(
+            $post->fresh()->load('category')
+        );
     }
 
     /**
@@ -150,7 +187,38 @@ class PostController extends Controller
         $post->delete();
 
         return response()->json([
-            'message' => 'Post deleted successfully'
+            'message' => 'Post deleted successfully',
+        ]);
+    }
+
+    /**
+     * Display post statistics.
+     */
+    public function statistics()
+    {
+        $totalPosts = Post::count();
+
+        $activePosts = Post::where(
+            'status',
+            'active'
+        )->count();
+
+        $inactivePosts = Post::where(
+            'status',
+            'inactive'
+        )->count();
+
+        $categoriesCount = Post::whereNotNull(
+            'category_id'
+        )
+            ->distinct('category_id')
+            ->count('category_id');
+
+        return response()->json([
+            'total_posts' => $totalPosts,
+            'active_posts' => $activePosts,
+            'inactive_posts' => $inactivePosts,
+            'categories_count' => $categoriesCount,
         ]);
     }
 }
