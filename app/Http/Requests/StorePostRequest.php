@@ -23,6 +23,12 @@ class StorePostRequest extends FormRequest
                 'sometimes',
                 Rule::in(['active', 'inactive']),
             ],
+
+            'category_id' => [
+                'nullable',
+                'integer',
+                'exists:categories,id',
+            ],
         ];
     }
 }
