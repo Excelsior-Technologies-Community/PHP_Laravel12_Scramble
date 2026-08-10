@@ -8,15 +8,97 @@ use App\Http\Resources\PostCollection;
 use App\Http\Resources\PostResource;
 use App\Models\Post;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class PostController extends Controller
 {
     /**
      * Display a listing of the posts.
+     *
+     * Supports:
+     * - Search by title/content
+     * - Status filter
+     * - Sorting
+     * - Pagination
      */
     public function index(Request $request)
     {
-        $posts = Post::paginate($request->get('per_page', 15));
+        $request->validate([
+            'search' => 'nullable|string|max:255',
+
+            'status' => [
+                'nullable',
+                Rule::in(['active', 'inactive']),
+            ],
+
+            'sort' => [
+                'nullable',
+                Rule::in(['latest', 'oldest', 'title']),
+            ],
+
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        $query = Post::query();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Search by title/content
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->filled('search')) {
+
+            $search = $request->search;
+
+            $query->where(function ($q) use ($search) {
+                $q->where('title', 'like', "%{$search}%")
+                    ->orWhere('content', 'like', "%{$search}%");
+            });
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Status Filter
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->filled('status')) {
+
+            $query->where('status', $request->status);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Sorting
+        |--------------------------------------------------------------------------
+        */
+
+        switch ($request->get('sort', 'oldest')) {
+
+            case 'oldest':
+                $query->oldest();
+                break;
+
+            case 'title':
+                $query->orderBy('title', 'asc');
+                break;
+
+            case 'latest':
+            default:
+                $query->latest();
+                break;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Pagination
+        |--------------------------------------------------------------------------
+        */
+
+        $perPage = $request->integer('per_page', 5);
+
+        $posts = $query->paginate($perPage);
 
         return new PostCollection($posts);
     }
@@ -27,7 +109,7 @@ class PostController extends Controller
     public function store(StorePostRequest $request)
     {
         $post = Post::create($request->validated());
-        
+
         return new PostResource($post);
     }
 
@@ -46,12 +128,18 @@ class PostController extends Controller
     {
         $validated = $request->validate([
             'title' => 'sometimes|string|max:255',
+
             'content' => 'sometimes|string',
+
+            'status' => [
+                'sometimes',
+                Rule::in(['active', 'inactive']),
+            ],
         ]);
 
         $post->update($validated);
 
-        return new PostResource($post);
+        return new PostResource($post->fresh());
     }
 
     /**
@@ -61,6 +149,8 @@ class PostController extends Controller
     {
         $post->delete();
 
-        return response()->json(['message' => 'Post deleted successfully']);
+        return response()->json([
+            'message' => 'Post deleted successfully'
+        ]);
     }
 }
